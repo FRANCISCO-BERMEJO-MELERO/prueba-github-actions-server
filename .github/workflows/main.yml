@@ -1,37 +1,98 @@
-name: Create Directory on Server
+name: Deploy web en IPFS
 
 on:
-  workflow_dispatch:  # Permite ejecutarlo manualmente desde GitHub Actions
+    push:
+      branches:
+        - main
 
 jobs:
-  create-folder:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🔑 Configurar SSH y Crear Carpeta en el Servidor
+      - name: Checkout del repositorio
+        uses: actions/checkout@v3
+
+      - name: Configuración Node
+        uses: actions/setup-node@v4
+        with:
+            node-version: 20
+            cache: "npm"
+
+      - name: Instalación dependencias
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Crear carpeta y mover los archivos del build
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          echo "Creando la carpeta: $REPO_NAME"
+          mkdir -p $REPO_NAME
+          mv dist $REPO_NAME/
+
+      - name: Comprimir Carpeta
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          tar -czvf $REPO_NAME.tar.gz $REPO_NAME
+          echo "Archivo comprimido"
+
+      - name: 🚨 Verificar Variables
+        run: |
+          echo "SERVER_USER: $SERVER_USER"
+          echo "SERVER_IP: $SERVER_IP"
+          if [ -z "$SERVER_IP" ] || [ -z "$SERVER_USER" ]; then
+            echo "❌ ERROR: Alguna de las variables no está definida en GitHub Secrets."
+            exit 1
+          fi
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
+          
+      - name: 📡 Subir el archivo comprimido al servidor (`~/pruebas`)
+        env: 
+            SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+            SERVER_USER: ${{ secrets.SERVER_USER }}
+            SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          echo "🔍 Configurando SSH..."
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
+          echo "Subiendo archivo comprimido al servidor..."
+          scp ${{ github.event.repository.name }}.tar.gz $SERVER_USER@$SERVER_IP:~/pruebas
 
-          echo "🔗 Conectando al servidor para crear la carpeta..."
+      - name: 🚀 Deploy en IPFS desde `~/pruebas`
+        env:
+            SERVER_USER: ${{ secrets.SERVER_USER }}
+            SERVER_IP: ${{ secrets.SERVER_IP }}
+            IPNS_KEY: ${{ secrets.IPNS_KEY }}
+
+        run: |
+          echo "🔗 Conectando al servidor para desplegar en IPFS..."
           ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP \
             "REPO_NAME='${{ github.event.repository.name }}' bash -s" <<'EOF'
-            
-            echo "✅ Conexión SSH exitosa en el servidor."
-            echo "📂 Creando carpeta en: $(pwd)/$REPO_NAME"
-            mkdir -p "$REPO_NAME"
 
-            if [ -d "$REPO_NAME" ]; then
-              echo "✅ Carpeta creada correctamente: $(pwd)/$REPO_NAME"
-            else
-              echo "❌ ERROR: No se pudo crear la carpeta."
-              exit 1
+            echo "✅ Conexión SSH exitosa en el servidor."
+            cd ~/pruebas
+
+            echo "📦 Extrayendo el nuevo contenido"
+            mkdir -p $REPO_NAME
+            tar -xzvf $REPO_NAME.tar.gz -C ~/pruebas
+
+            CID=$(ipfs add -r -Q $REPO_NAME/dist)
+
+            echo "🌍 Publicando en IPNS..."
+            if ! ipfs key list | grep -wq "$IPNS_KEY"; then
+                echo "🔑 Clave IPNS '$IPNS_KEY' no encontrada. Creándola..."
+                ipfs key gen "$IPNS_KEY"
             fi
+
+            IPNS_ID=$(ipfs key list -l | grep "$IPNS_KEY" | awk '{print $1}')
+            ipfs name publish --key="$IPNS_KEY" /ipfs/$CID
+            echo "✅ Accede a tu contenido en IPNS: https://ipfs.io/ipns/$IPNS_ID"
+
+            echo "📝 Creando archivo de registro..."
+            FECHA=$(date +"%Y-%m-%d %H:%M")
+            echo "📅 Fecha de despliegue: $FECHA" > $REPO_NAME/deployment_info.txt
+            echo "📌 CID: $CID" >> $REPO_NAME/deployment_info.txt
+            echo "🔑 Clave IPNS: $IPNS_KEY" >> $REPO_NAME/deployment_info.txt
+            echo "✅ Archivo de registro creado en ~/pruebas/$REPO_NAME/deployment_info.txt"
           EOF
