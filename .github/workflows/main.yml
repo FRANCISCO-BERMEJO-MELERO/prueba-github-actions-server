@@ -37,6 +37,21 @@ jobs:
         tar -czvf $REPO_NAME.tar.gz $REPO_NAME
         echo "Archivo comprimido"
 
+    - name: 🚨 Verificar Variables
+      run: |
+        echo "SERVER_USER: $SERVER_USER"
+        echo "SERVER_IP: $SERVER_IP"
+        echo "SERVER_PATH: $SERVER_PATH"
+        if [ -z "$SERVER_IP" ] || [ -z "$SERVER_USER" ] || [ -z "$SERVER_PATH" ]; then
+          echo "❌ ERROR: Alguna de las variables no está definida en GitHub Secrets."
+          exit 1
+        fi
+      env:
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        SERVER_IP: ${{ secrets.SERVER_IP }}
+        SERVER_PATH: ${{ secrets.SERVER_PATH }}
+    
+
     - name: Limpiar la version anterior
       env: 
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
