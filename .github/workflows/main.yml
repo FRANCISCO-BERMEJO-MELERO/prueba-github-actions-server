@@ -48,9 +48,9 @@ jobs:
         echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
-
+        REPO_NAME="${{ github.event.repository.name }}"
+        
         ssh $SERVER_USER@$SERVER_IP << 'EOF'
-          REPO_NAME="${{ github.event.repository.name }}"
           if [ -d "$SERVER_PATH/$REPO_NAME" ]; then
             echo "Eliminando la version anterior :$SERVER_PATH/$REPO_NAME"
             rm -rf $SERVER_PATH/$REPO_NAME
