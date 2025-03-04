@@ -1,0 +1,109 @@
+name: Deploy web en IPFS
+
+on:
+    push:
+      branches:
+        - main
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Checkout del repositorio
+      uses: actions/checkout@v3
+
+    - name: Configuración Node
+      uses: actions/setup-node@v4
+      with:
+          node-version: 20
+          cache: "npm"
+    - name: Instalación dependecias
+      run: npm install
+
+    - name: Build
+      run: npm run build
+
+    - name: Crear carpeta y mover los archivos del build
+      run: |
+        REPO_NAME="${{ github.event.repository.name }}"
+        echo "Creando la carpeta: $REPO_NAME"
+        mkdir -p $REPO_NAME
+        mv dist $REPO_NAME/
+
+    - name: Comprimir Carpeta
+      run: |
+        REPO_NAME="${{ github.event.repository.name }}"
+        tar -czvf $REPO_NAME.tar.gz $REPO_NAME
+        echo "Archivo comprimido"
+
+    - name: Limpiar la version anterior
+      env: 
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_PATH: ${{ secrets.SERVER_PATH }}
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
+
+        ssh $SERVER_USER@$SERVER_IP << 'EOF'
+          REPO_NAME="${{ github.event.repository.name }}"
+          if [ -d "$SERVER_PATH/$REPO_NAME" ]; then
+            echo "Eliminando la version anterior :$SERVER_PATH/$REPO_NAME"
+            rm -rf $SERVER_PATH/$REPO_NAME
+          fi
+          if [ -f "$SERVER_PATH/$REPO_NAME.tar.gz" ]; then
+              echo "Eliminando archivo comprimido anterior: $SERVER_PATH/$REPO_NAME.tar.gz"
+              rm -f $SERVER_PATH/$REPO_NAME.tar.gz
+          fi
+          EOF
+
+    - name: Subiendo el archivo comprimido al servidor
+      env: 
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_PATH: ${{ secrets.SERVER_PATH }}
+      run: |
+        echo "Subiendo archivo comprimido al servidor"
+        scp ${{ github.event.repository.name }}.tar.gz $SERVER_USER@$SERVER_IP:$SERVER_PATH
+    
+    - name: Deploy en IPFS
+      env:
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          SERVER_PATH: ${{ secrets.SERVER_PATH }}
+          IPNS_KEY: ${{ secrets.IPNS_KEY }}
+
+      run: |
+        ssh $SERVER_USER@$SERVER_IP << 'EOF'
+          REPO_NAME="${{ github.event.repository.name }}"
+          cd $SERVER_PATH
+
+          echo "Extrayendo el nuevo contenido"
+          mkdir -p $REPO_NAME
+          tar -xzvf $REPO_NAME.tar.gz -C $SERVER_PATH
+          CID=$(ipfs add -r -Q $REPO_NAME/dist)
+
+          echo "Publicando en IPNS"
+            if ! ipfs key list | grep -wq "$IPNS_KEY"; then
+                echo "Clave IPNS '$IPNS_KEY' no encontrada. Creándola"
+                ipfs key gen "$IPNS_KEY"
+            fi
+
+            IPNS_ID=$(ipfs key list -l | grep "$IPNS_KEY" | awk '{print $1}')
+            ipfs name publish --key="$IPNS_KEY" /ipfs/$CID
+            echo "Accede a tu contenido en IPNS: https://ipfs.io/ipns/$IPNS_ID"
+
+            echo "Creando archivo de registro"
+            FECHA=$(date +"%Y-%m-%d %H:%M")
+            echo "Fecha de despliegue: $FECHA" > $REPO_NAME/deployment_info.txt
+            echo "CID: $CID" >> $REPO_NAME/deployment_info.txt
+            echo "Clave IPNS: $IPNS_KEY" >> $REPO_NAME/deployment_info.txt
+            echo "Archivo de registro creado en $SERVER_PATH/$REPO_NAME/deployment_info.txt"
+
+          
+
