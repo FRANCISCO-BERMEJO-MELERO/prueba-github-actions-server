@@ -66,6 +66,8 @@ jobs:
             echo "Nombre del REPO: $REPO_NAME"
             cd ~/pruebas
             if [ -d "$REPO_NAME" ]; then
+                ULTIMO_CID=$(cat ultimo_cid.txt)
+                ipfs pin rm -r "$ULTIMO_CID"
                 rm -rf "$REPO_NAME"
             fi
 
@@ -109,6 +111,8 @@ jobs:
             IPNS_ID=$(ipfs key list -l | grep "$IPNS_KEY" | awk '{print $1}')
             ipfs name publish --key="$IPNS_KEY" /ipfs/$CID
             echo "✅ Accede a tu contenido en IPNS: https://ipfs.io/ipns/$IPNS_ID"
+
+            echo "$CID" > $REPO_NAME/ultimo_cid.txt
 
             echo "📝 Creando archivo de registro..."
             FECHA=$(date +"%Y-%m-%d %H:%M")
