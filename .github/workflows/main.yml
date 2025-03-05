@@ -75,12 +75,9 @@ jobs:
         env:
             SERVER_USER: ${{ secrets.SERVER_USER }}
             SERVER_IP: ${{ secrets.SERVER_IP }}
-            IPNS_KEY: ${{ secrets.IPNS_KEY }}
-
         run: |
           echo "🔗 Conectando al servidor para desplegar en IPFS..."
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP \
-            "REPO_NAME='${{ github.event.repository.name }}' bash -s" <<'EOF'
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP \ "REPO_NAME='${{ github.event.repository.name }}' IPNS_KEY='${{ secrets.IPNS_KEY }}' bash -s" <<'EOF'
 
             echo "✅ Conexión SSH exitosa en el servidor."
             cd ~/pruebas
