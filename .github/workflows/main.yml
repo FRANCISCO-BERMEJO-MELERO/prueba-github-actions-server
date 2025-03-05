@@ -65,7 +65,10 @@ jobs:
             
             echo "Nombre del REPO: $REPO_NAME"
             cd ~/pruebas
-            rm -rf "$REPO_NAME"
+            if [ -d "$REPO_NAME" ]; then
+                rm -rf "$REPO_NAME"
+            fi
+
           EOF
 
 
