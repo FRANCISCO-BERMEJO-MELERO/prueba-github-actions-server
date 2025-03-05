@@ -102,7 +102,7 @@ jobs:
             echo "Creando archivo de registro..."
             FECHA=$(date +"%Y-%m-%d %H:%M")
             echo "Fecha de despliegue: $FECHA" > $REPO/registro.txt
-            echo "CID: $CID" >> $REPO/deployment_info.txt
+            echo "CID: $CID" >> $REPO/registro.txt
             echo "Clave IPNS: $IPNS_KEY" >> $REPO/registro.txt
             echo "Archivo de registro creado en ~/pruebas/$REPO/registro.txt"
           EOF
