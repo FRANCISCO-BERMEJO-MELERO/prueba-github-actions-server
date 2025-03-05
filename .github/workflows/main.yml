@@ -92,6 +92,8 @@ jobs:
             echo "📦 Extrayendo el nuevo contenido"
             mkdir -p $REPO_NAME
             tar -xzvf $REPO_NAME.tar.gz -C ~/pruebas
+            
+            rm -rf ~/pruebas/$REPO_NAME.tar.gz
 
             CID=$(ipfs add -r -Q $REPO_NAME/dist)
 
