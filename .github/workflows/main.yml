@@ -27,97 +27,82 @@ jobs:
 
       - name: Crear carpeta y mover los archivos del build
         run: |
-          REPO_NAME="${{ github.event.repository.name }}"
+          REPO="${{ github.event.repository.name }}"
           echo "Creando la carpeta: $REPO_NAME"
-          mkdir -p $REPO_NAME
-          mv dist $REPO_NAME/
+          mkdir -p $REPO
+          mv dist $REPO/
 
       - name: Comprimir Carpeta
         run: |
-          REPO_NAME="${{ github.event.repository.name }}"
-          tar -czvf $REPO_NAME.tar.gz $REPO_NAME
+          REPO="${{ github.event.repository.name }}"
+          tar -czvf $REPO.tar.gz $REPO
           echo "Archivo comprimido"
 
-      - name: 🚨 Verificar Variables
-        run: |
-          echo "SERVER_USER: $SERVER_USER"
-          echo "SERVER_IP: $SERVER_IP"
-          if [ -z "$SERVER_IP" ] || [ -z "$SERVER_USER" ]; then
-            echo "❌ ERROR: Alguna de las variables no está definida en GitHub Secrets."
-            exit 1
-          fi
-        env:
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-
-      - name: 🔥 Limpiar versión anterior en `~/pruebas`
+      - name: Limpiar versión anterior en `~/pruebas`
         env: 
             SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
             SERVER_USER: ${{ secrets.SERVER_USER }}
             SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          echo "🔑 Configurando SSH..."
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP \ "REPO_NAME='${{ github.event.repository.name }}' bash -s" <<'EOF'
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP \ "REPO='${{ github.event.repository.name }}' bash -s" <<'EOF'
             
-            echo "Nombre del REPO: $REPO_NAME"
             cd ~/pruebas
-            if [ -d "$REPO_NAME" ]; then
-                ULTIMO_CID=$(cat $REPO_NAME/ultimo_cid.txt)
+            if [ -d "$REPO" ]; then
+                echo "Eliminando la última versión"
+                ULTIMO_CID=$(cat $REPO/ultimo_cid.txt)
                 ipfs pin rm -r "$ULTIMO_CID"
-                rm -rf "$REPO_NAME"
+                rm -rf "$REPO"
             fi
 
           EOF
 
 
-      - name: 📡 Subir el archivo comprimido al servidor (`~/pruebas`)
+      - name: Subir el archivo comprimido al servidor (`~/pruebas`)
         env: 
             SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
             SERVER_USER: ${{ secrets.SERVER_USER }}
             SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          echo "Subiendo archivo comprimido al servidor..."
+          echo "Subiendo archivo comprimido al servidor."
           scp ${{ github.event.repository.name }}.tar.gz $SERVER_USER@$SERVER_IP:~/pruebas
 
-      - name: 🚀 Deploy en IPFS desde `~/pruebas`
+      - name: Despliegue en IPFS desde `~/pruebas`
         env:
             SERVER_USER: ${{ secrets.SERVER_USER }}
             SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          echo "🔗 Conectando al servidor para desplegar en IPFS..."
-          ssh $SERVER_USER@$SERVER_IP \ "REPO_NAME='${{ github.event.repository.name }}' IPNS_KEY='${{ secrets.IPNS_KEY }}' bash -s" <<'EOF'
+          ssh $SERVER_USER@$SERVER_IP \ "REPO='${{ github.event.repository.name }}' IPNS_KEY='${{ secrets.IPNS_KEY }}' bash -s" <<'EOF'
 
-            echo "✅ Conexión SSH exitosa en el servidor."
             cd ~/pruebas
 
-            echo "📦 Extrayendo el nuevo contenido"
-            mkdir -p $REPO_NAME
-            tar -xzvf $REPO_NAME.tar.gz -C ~/pruebas
+            echo " Extrayendo el nuevo contenido"
+            mkdir -p $REPO
+            tar -xzvf $REPO.tar.gz -C ~/pruebas
             
-            rm -rf ~/pruebas/$REPO_NAME.tar.gz
+            rm -rf ~/pruebas/$REPO.tar.gz
 
-            CID=$(ipfs add -r -Q $REPO_NAME/dist)
+            CID=$(ipfs add -r -Q $REPO/dist)
 
-            echo "🌍 Publicando en IPNS..."
+            echo "Publicando en IPNS..."
             if ! ipfs key list | grep -wq "$IPNS_KEY"; then
-                echo "🔑 Clave IPNS '$IPNS_KEY' no encontrada. Creándola..."
+                echo "Clave IPNS '$IPNS_KEY' no encontrada. Creándola..."
                 ipfs key gen "$IPNS_KEY"
             fi
 
             IPNS_ID=$(ipfs key list -l | grep "$IPNS_KEY" | awk '{print $1}')
             ipfs name publish --key="$IPNS_KEY" /ipfs/$CID
-            echo "✅ Accede a tu contenido en IPNS: https://ipfs.io/ipns/$IPNS_ID"
+            echo "Accede a tu contenido en IPNS: https://ipfs.io/ipns/$IPNS_ID"
 
-            echo "$CID" > $REPO_NAME/ultimo_cid.txt
+            echo "$CID" > $REPO/ultimo_cid.txt
 
-            echo "📝 Creando archivo de registro..."
+            echo "Creando archivo de registro..."
             FECHA=$(date +"%Y-%m-%d %H:%M")
-            echo "📅 Fecha de despliegue: $FECHA" > $REPO_NAME/deployment_info.txt
-            echo "📌 CID: $CID" >> $REPO_NAME/deployment_info.txt
-            echo "🔑 Clave IPNS: $IPNS_KEY" >> $REPO_NAME/deployment_info.txt
-            echo "✅ Archivo de registro creado en ~/pruebas/$REPO_NAME/deployment_info.txt"
+            echo "Fecha de despliegue: $FECHA" > $REPO/registro.txt
+            echo "CID: $CID" >> $REPO/registro.txt
+            echo "Clave IPNS: $IPNS_KEY" >> $REPO/registro.txt
+            echo "Archivo de registro creado en ~/pruebas/$REPO/registro.txt"
           EOF
