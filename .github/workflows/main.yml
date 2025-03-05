@@ -61,6 +61,9 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
+          ssh $SERVER_USER@$SERVER_IP \ "REPO_NAME='${{ github.event.repository.name }}'  bash -s" <<'EOF'
+            echo "Nombre del REPO: $REPO_NAME"            
+          EOF
 
       - name: 📡 Subir el archivo comprimido al servidor (`~/pruebas`)
         env: 
@@ -77,7 +80,7 @@ jobs:
             SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
           echo "🔗 Conectando al servidor para desplegar en IPFS..."
-          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP \ "REPO_NAME='${{ github.event.repository.name }}' IPNS_KEY='${{ secrets.IPNS_KEY }}' bash -s" <<'EOF'
+          ssh $SERVER_USER@$SERVER_IP \ "REPO_NAME='${{ github.event.repository.name }}' IPNS_KEY='${{ secrets.IPNS_KEY }}' bash -s" <<'EOF'
 
             echo "✅ Conexión SSH exitosa en el servidor."
             cd ~/pruebas
