@@ -66,7 +66,7 @@ jobs:
             echo "Nombre del REPO: $REPO_NAME"
             cd ~/pruebas
             if [ -d "$REPO_NAME" ]; then
-                ULTIMO_CID=$(cat ultimo_cid.txt)
+                ULTIMO_CID=$(cat $REPO_NAME/ultimo_cid.txt)
                 ipfs pin rm -r "$ULTIMO_CID"
                 rm -rf "$REPO_NAME"
             fi
